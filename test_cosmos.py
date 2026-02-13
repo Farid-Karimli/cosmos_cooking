@@ -4,6 +4,8 @@ import torch
 import config
 from video_utils import trim_video
 
+# Credit: https://github.com/nvidia/Cosmos-Reason2-2B
+
 model_name = "nvidia/Cosmos-Reason2-2B"
 model = transformers.Qwen3VLForConditionalGeneration.from_pretrained(
     model_name, dtype=torch.float16, device_map="auto", attn_implementation="sdpa"
@@ -12,10 +14,16 @@ processor: transformers.Qwen3VLProcessor = (
     transformers.AutoProcessor.from_pretrained(model_name)
 )
  
+# This script assumes that a video has been downloaded in the config.VIDEO_DIRECTORY
+# and that the video is named <video_id>_360p.mp4
+
 video_id = '29_22'
 video_path = f"{config.VIDEO_DIRECTORY}/{video_id}_360p.mp4"
+
+# The video is trimmed to the first 10 seconds
 start_time = 0
 end_time = 10
+
 output_path = f"{config.VIDEO_DIRECTORY}/{video_id}_360p_trimmed.mp4"
 trim_video(video_path, start_time, end_time, output_path)
 print(f"Trimmed video saved to {output_path}")

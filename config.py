@@ -1,1 +1,3 @@
 VIDEO_DIRECTORY = "./captain_cook_4d/gopro/resolution_360p"
+
+STEP_ANNOTATION_JSON = "./captain_cook_4d/gopro/resolution_360p/downloaded_video_annotations.json"

@@ -1,6 +1,9 @@
 import transformers
 import torch
 
+import config
+from video_utils import trim_video
+
 model_name = "nvidia/Cosmos-Reason2-2B"
 model = transformers.Qwen3VLForConditionalGeneration.from_pretrained(
     model_name, dtype=torch.float16, device_map="auto", attn_implementation="sdpa"
@@ -8,6 +11,14 @@ model = transformers.Qwen3VLForConditionalGeneration.from_pretrained(
 processor: transformers.Qwen3VLProcessor = (
     transformers.AutoProcessor.from_pretrained(model_name)
 )
+ 
+video_id = '29_22'
+video_path = f"{config.VIDEO_DIRECTORY}/{video_id}_360p.mp4"
+start_time = 0
+end_time = 10
+output_path = f"{config.VIDEO_DIRECTORY}/{video_id}_360p_trimmed.mp4"
+trim_video(video_path, start_time, end_time, output_path)
+print(f"Trimmed video saved to {output_path}")
 
 video_messages = [
     {
@@ -17,7 +28,7 @@ video_messages = [
     {"role": "user", "content": [
             {
                 "type": "video", 
-                "video": "./captain_cook_4d/gopro/resolution_360p/1_36_360p.mp4",
+                "video": output_path,
                 "fps": 4,
             },
             {"type": "text", "text": (
@@ -50,3 +61,5 @@ output_text = processor.batch_decode(
     skip_special_tokens=True,
     clean_up_tokenization_spaces=False,
 )
+
+print(output_text)

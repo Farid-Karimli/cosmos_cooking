@@ -1,0 +1,1 @@
+VIDEO_DIRECTORY = "./captain_cook_4d/gopro/resolution_360p"

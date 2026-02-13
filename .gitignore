@@ -10,3 +10,4 @@ wheels/
 .venv
 
 captain_cook_4d/
+downloaded_video_annotations.json

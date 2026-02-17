@@ -16,8 +16,19 @@ import numpy as np
 import os
 import json
 
-model = Qwen3VLForConditionalGeneration.from_pretrained("nvidia/Cosmos-Reason2-2B", torch_dtype=torch.float16, device_map="auto", attn_implementation="sdpa")
-processor = Qwen3VLProcessor.from_pretrained("nvidia/Cosmos-Reason2-2B")
+MODEL_NAME = "nvidia/Cosmos-Reason2-2B"
+DEVICE = torch.device("cuda")
+
+model, processor = None, None
+
+def load_model_and_processor() -> tuple[Qwen3VLForConditionalGeneration, Qwen3VLProcessor]:
+    model = Qwen3VLForConditionalGeneration.from_pretrained(MODEL_NAME, torch_dtype=torch.float16, device_map="auto", attn_implementation="sdpa")
+    processor = Qwen3VLProcessor.from_pretrained(MODEL_NAME)
+
+    model.to(torch.device("cuda"))
+    processor.to(torch.device("cuda"))
+
+    return model, processor
 
 def process_inputs(video: str | list[np.ndarray], recipe_instructions: str) -> BatchFeature:
     # TODO: Implement
@@ -133,6 +144,11 @@ def run_error_recognition() -> list[dict]:
 
 
 if __name__ == "__main__":
-    results = run_error_recognition()
-    with open(config.ERROR_RECOGNITION_RESULTS_JSON, "w") as f:
-        json.dump(results, f, indent=4)
+    model, processor = load_model_and_processor()
+    try:
+        results = run_error_recognition()
+        with open(config.ERROR_RECOGNITION_RESULTS_JSON, "w") as f:
+            json.dump(results, f, indent=4)
+    finally:
+        del model, processor
+        torch.cuda.empty_cache()

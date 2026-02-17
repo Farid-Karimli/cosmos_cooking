@@ -15,4 +15,5 @@ dependencies = [
     "tqdm>=4.67.3",
     "transformers>=5.1.0",
     "matplotlib>=3.10.0",
+    "scipy>=1.17.0",
 ]

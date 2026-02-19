@@ -6,7 +6,7 @@ import math
 def get_step_annotations(recording_id: str, step_annotations: list[dict]) -> dict:
     for obj in step_annotations:
         if obj['recording_id'] == recording_id:
-            return obj['step_annotations']
+            return obj['steps']
     return None
 
 def prepare_data_for_task1_prompted(recording_id: str, video_path: str, step_annotations: list[dict], error_annotations: list[dict]) -> str:

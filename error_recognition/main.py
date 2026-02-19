@@ -26,12 +26,11 @@ def load_model_and_processor() -> tuple[Qwen3VLForConditionalGeneration, Qwen3VL
     processor = Qwen3VLProcessor.from_pretrained(MODEL_NAME)
 
     model.to(torch.device("cuda"))
-    processor.to(torch.device("cuda"))
 
     return model, processor
 
 def process_inputs(video: str | list[np.ndarray], recipe_instructions: str) -> BatchFeature:
-    # TODO: Implement
+    # TODO: Implement the video preparation here
     pass
 
 
@@ -147,7 +146,11 @@ if __name__ == "__main__":
     model, processor = load_model_and_processor()
     try:
         results = run_error_recognition()
-        with open(config.ERROR_RECOGNITION_RESULTS_JSON, "w") as f:
+
+        if not os.path.exists(config.ERROR_RECOGNITION_TASK1_RESULTS_JSON):
+            os.makedirs(os.path.dirname(config.ERROR_RECOGNITION_TASK1_RESULTS_JSON), exist_ok=True)
+        
+        with open(config.ERROR_RECOGNITION_TASK1_RESULTS_JSON, "w") as f:
             json.dump(results, f, indent=4)
     finally:
         del model, processor

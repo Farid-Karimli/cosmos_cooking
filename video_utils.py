@@ -5,6 +5,8 @@ import cv2
 
 import numpy as np
 
+import config
+
 
 def trim_video(
     video_path: str,
@@ -100,16 +102,14 @@ def time_to_seconds(minutes: int | float = 0, seconds: float = 0) -> float:
     return float(minutes) * 60 + float(seconds)
 
 if __name__ == "__main__":
-    videopath = "/Users/faridkarimli/Desktop/Programming/PhD/Cosmos/captain_cook_4d/gopro/resolution_360p/27_26_360p.mp4"
+    videopath = config.VIDEO_DIRECTORY + "/27_26_360p.mp4"
+    video_id = "27_26"
     start_time = 0
     end_time = 10
 
-    output_path = "./test.mp4"
+    output_path = config.VIDEO_DIRECTORY + f"/{video_id}_360p_trimmed.mp4"
 
-    frames = trim_video(videopath, start_time, end_time)
-    print(f"Number of frames: {len(frames)}")
-    print(f"Type of frames: {type(frames)}")
-    print(f"Shape of frames: {frames[0].shape}")
-    print(f"Type of frames: {type(frames[0])}")
+    frames = trim_video(videopath, start_time, end_time, output_path)
+    print(f"Trimmed video saved to {output_path}")
 
 

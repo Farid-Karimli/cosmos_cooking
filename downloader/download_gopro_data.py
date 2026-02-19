@@ -72,8 +72,12 @@ def process_download_gopro_data(download_args):
 	print(f"Downloading {len(download_url_links)} files")
 	download_data(download_url_links, download_file_paths)
 
-	with open(os.path.join(download_args.output_dir, "downloaded_video_annotations.json"), "w") as f:
+	download_path_parent_dir = os.path.dirname(download_file_paths[0])
+	downloaded_video_annotations_path = os.path.join(download_path_parent_dir,  "downloaded_video_annotations.json")
+	with open(downloaded_video_annotations_path, "w") as f:
 		json.dump(downloaded_video_annotations, f)
+
+	return downloaded_video_annotations_path
 
 
 if __name__ == "__main__":
@@ -89,9 +93,10 @@ if __name__ == "__main__":
 	
 	parser.add_argument('--output_dir', type=str, default="./", help='Output directory to store the downloaded data')
 
-	parser.add_argument("--number_of_files", type=int, default=None, help='Number of files to download')
+	parser.add_argument("--n", type=int, default=None, help='Number of files to download')
 	
 	# Parse the arguments
 	args = parser.parse_args()
 	
-	process_download_gopro_data(args)
+	downloaded_video_annotations_path = process_download_gopro_data(args)
+	print(f"Downloaded video annotations path: {downloaded_video_annotations_path}")

@@ -35,7 +35,7 @@ def process_download_gopro_data(download_args):
 	with open(os.path.join(os.path.dirname(__file__), "metadata", "complete_step_annotations.json"), "r") as f:
 		complete_step_annotations = json.load(f)
 
-	video_ids_to_download = get_balanced_sample_of_videos_to_download(download_args.number_of_files)
+	video_ids_to_download = get_balanced_sample_of_videos_to_download(download_args.n)
 	
 	output_dir = Path(download_args.output_dir)
 	data_directory = prepare_gopro_2d_output_directory(download_args, output_dir)

@@ -15,15 +15,17 @@ ANNOTATIONS_PATH = Path(__file__).resolve().parent.parent / "downloader" / "meta
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "downloader" / "metadata" / "error_step_times_distribution.png"
 
 
-def load_error_step_times(path: Path) -> tuple[list[float], list[float]]:
-    """Load annotations and return (start_times, durations) for steps with has_errors=True."""
+def load_error_step_times(path: Path) -> tuple[list[float], list[float], list[int]]:
+    """Load annotations and return (start_times, durations, errors_per_video) for steps with has_errors=True."""
     with open(path, "r") as f:
         data = json.load(f)
 
     start_times: list[float] = []
     durations: list[float] = []
+    errors_per_video: list[int] = []
 
     for recording in data.values():
+        count = 0
         for step in recording.get("steps", []):
             if not step.get("has_errors"):
                 continue
@@ -32,21 +34,25 @@ def load_error_step_times(path: Path) -> tuple[list[float], list[float]]:
                 continue
             start_times.append(st)
             durations.append(et - st)
+            count += 1
+        errors_per_video.append(count)
 
-    return start_times, durations
+    return start_times, durations, errors_per_video
 
 
 def main() -> None:
-    start_times, durations = load_error_step_times(ANNOTATIONS_PATH)
+    start_times, durations, errors_per_video = load_error_step_times(ANNOTATIONS_PATH)
     if not start_times:
         print("No valid error step times found.")
         return
 
+    print(f"Videos: {len(errors_per_video)}")
     print(f"Error steps: {len(start_times)}")
+    print(f"Errors per video: min={min(errors_per_video)}, max={max(errors_per_video)}, mean={np.mean(errors_per_video):.2f}")
     print(f"Start time (s): min={min(start_times):.1f}, max={max(start_times):.1f}, mean={np.mean(start_times):.1f}")
     print(f"Duration (s):   min={min(durations):.1f}, max={max(durations):.1f}, mean={np.mean(durations):.1f}")
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
     # Start time distribution (when in the video errors occur)
     ax = axes[0]
@@ -79,6 +85,17 @@ def main() -> None:
     ax.set_title("How long do error steps last? (duration)")
     ax.legend(loc="upper right")
     ax.grid(True, alpha=0.3)
+
+    # Errors per video distribution
+    ax = axes[2]
+    max_errors = max(errors_per_video)
+    bins = range(0, max_errors + 2)
+    ax.hist(errors_per_video, bins=bins, align="left", color="mediumseagreen", edgecolor="white", alpha=0.85)
+    ax.set_xlabel("Number of errors in video")
+    ax.set_ylabel("Number of videos")
+    ax.set_title("How many errors per video?")
+    ax.set_xticks(range(0, max_errors + 1))
+    ax.grid(True, alpha=0.3, axis="y")
 
     plt.suptitle("Distribution of error step times (complete_step_annotations.json)", fontsize=12)
     plt.tight_layout()

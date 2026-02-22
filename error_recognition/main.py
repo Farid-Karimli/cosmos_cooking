@@ -6,7 +6,7 @@ uv run python -m error_recognition.main
 """
 
 from error_recognition.process import prepare_data_for_task1, prepare_data_for_task2
-from error_recognition.prompts import TASK1_PROMPT, TASK1_PROMPT2, TASK2_PROMPT
+from error_recognition.prompts import TASK1_PROMPT, TASK2_PROMPT
 import config
 
 from transformers import BatchFeature, Qwen3VLForConditionalGeneration, Qwen3VLProcessor, BatchFeature
@@ -171,6 +171,9 @@ def run_error_recognition_task1(n_videos: int | None = None) -> list[dict]:
     with open(config.STEP_ANNOTATION_JSON) as f:
         step_annotations = json.load(f)
 
+    with open(config.ERROR_ANNOTATION_JSON) as f:
+        error_annotations = json.load(f)
+
     video_files = [f for f in os.listdir(config.VIDEO_DIRECTORY) if f.endswith(".mp4")]
     if n_videos is not None and n_videos < len(video_files):
         video_files = video_files[:n_videos]
@@ -184,6 +187,7 @@ def run_error_recognition_task1(n_videos: int | None = None) -> list[dict]:
             recording_id=video_id,
             video_path=video_path,
             step_annotations=step_annotations,
+            error_annotations=error_annotations,
         )
 
         response = error_recognition_with_video(frames, recipe_instructions=recipe_instructions, video_fps=video_fps)
@@ -192,7 +196,7 @@ def run_error_recognition_task1(n_videos: int | None = None) -> list[dict]:
             'video_path': video_path,
             'model_response': response,
             'recipe': recipe_instructions,
-            'has_errors': has_errors
+            'has_errors': has_errors,
         })
 
     return result_json
@@ -203,6 +207,9 @@ def run_error_recognition_task2(n_videos: int | None = None) -> list[dict]:
     """
     with open(config.STEP_ANNOTATION_JSON) as f:
         step_annotations = json.load(f)
+
+    with open(config.ERROR_ANNOTATION_JSON) as f:
+        error_annotations = json.load(f)
 
     video_files = [f for f in os.listdir(config.VIDEO_DIRECTORY) if f.endswith(".mp4")]
     if n_videos is not None and n_videos < len(video_files):
@@ -217,6 +224,7 @@ def run_error_recognition_task2(n_videos: int | None = None) -> list[dict]:
             recording_id=video_id,
             video_path=video_path,
             step_annotations=step_annotations,
+            error_annotations=None,
         )
 
         response = error_recognition_with_video(frames, recipe_instructions=None, video_fps=video_fps)

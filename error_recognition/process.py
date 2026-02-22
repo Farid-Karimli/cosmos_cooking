@@ -23,12 +23,40 @@ def get_video_fps(video_path: str) -> float | None:
     return float(fps)
 
 
+def get_error_descriptions_for_step(
+    recording_id: str,
+    step_id: int | None,
+    error_annotations: list[dict] | None,
+) -> str:
+    if step_id is None or not error_annotations:
+        return ""
+
+    for rec in error_annotations:
+        if rec.get("recording_id") != recording_id:
+            continue
+        for step in rec.get("step_annotations", []):
+            if step.get("step_id") != step_id or "errors" not in step:
+                continue
+            parts = []
+            for err in step.get("errors", []):
+                tag = err.get("tag", "")
+                desc = err.get("description", "")
+                if tag and desc:
+                    parts.append(f"{tag}: {desc}")
+                elif desc:
+                    parts.append(desc)
+                elif tag:
+                    parts.append(tag)
+            return "; ".join(parts)
+    return ""
+
+
 def prepare_data_for_task1(
     recording_id: str,
     video_path: str,
     step_annotations: list[dict],
     error_annotations: list[dict] | None = None,
-) -> tuple[list[np.ndarray], str, bool, float | None]:
+) -> tuple[list[np.ndarray], str, str, float | None]:
     """
     Prepare data for error recognition task, prompted with recipe instructions.
 
@@ -36,10 +64,10 @@ def prepare_data_for_task1(
         recording_id: Id of the recording.
         video_path: Path to the video file.
         step_annotations: Step annotations for the video (e.g. from downloaded_video_annotations.json).
-        error_annotations: Unused. Kept only for backward compatibility.
+        error_annotations: Error annotations used to retrieve error descriptions.
 
     Returns:
-        Tuple of (trimmed video frames, recipe text, has_errors, source_video_fps).
+        Tuple of (trimmed video frames, recipe text, error_description, source_video_fps).
 
     Video trimming:
         1. If the video has errors: from start until 5 seconds after the first error.
@@ -58,10 +86,14 @@ def prepare_data_for_task1(
             first_error_idx = i
             break
 
-    has_errors = first_error_idx is not None
+    error_description = ""
     if first_error_idx is not None:
         # Case 1: Has errors — trim from start to first error + 5 seconds
         recipe_steps = steps[: first_error_idx + 1]
+        step_id = steps[first_error_idx].get("step_id")
+        error_description = get_error_descriptions_for_step(recording_id, step_id, error_annotations)
+        if not error_description:
+            error_description = "Error present but description unavailable."
         start_time = 0
         end_time = steps[first_error_idx]["end_time"] + 5
         # Guard against invalid timestamps (e.g. -1)
@@ -84,7 +116,7 @@ def prepare_data_for_task1(
 
     trimmed_video = trim_video(video_path, start_time, end_time)
     video_fps = get_video_fps(video_path)
-    return trimmed_video, recipe, has_errors, video_fps
+    return trimmed_video, recipe, error_description, video_fps
 
 
 def prepare_data_for_task2(
@@ -92,7 +124,7 @@ def prepare_data_for_task2(
     video_path: str,
     step_annotations: list[dict],
     error_annotations: list[dict] | None = None,
-) -> tuple[list[np.ndarray], bool, float | None]:
+) -> tuple[list[np.ndarray], str, float | None]:
     """
     Same video trimming as prepare_data_for_task1_prompted, but without building the recipe.
     Returns only the path to the trimmed video and the error description (if any).
@@ -104,7 +136,7 @@ def prepare_data_for_task2(
         error_annotations: Error annotations (e.g. from downloader/metadata/error_annotations.json).
 
     Returns:
-        Tuple of (trimmed video frames, has_errors, source_video_fps).
+        Tuple of (trimmed video frames, error_description, source_video_fps).
 
     Video trimming: same as prepare_data_for_task1_prompted (first error + 5 sec, or first N steps with 5 sec buffer).
     """
@@ -118,8 +150,12 @@ def prepare_data_for_task2(
             first_error_idx = i
             break
 
-    has_errors = first_error_idx is not None
+    error_description = ""
     if first_error_idx is not None:
+        step_id = steps[first_error_idx].get("step_id")
+        error_description = get_error_descriptions_for_step(recording_id, step_id, error_annotations)
+        if not error_description:
+            error_description = "Error present but description unavailable."
         start_time = 0
         end_time = steps[first_error_idx]["end_time"] + 5
         if end_time < 0:
@@ -138,7 +174,7 @@ def prepare_data_for_task2(
 
     trimmed_video = trim_video(video_path, start_time, end_time)
     video_fps = get_video_fps(video_path)
-    return trimmed_video, has_errors, video_fps
+    return trimmed_video, error_description, video_fps
 
 
 if __name__ == "__main__":
@@ -149,6 +185,6 @@ if __name__ == "__main__":
     video_path = str(base / "captain_cook_4d" / "gopro" / "resolution_360p" / f"{recording_id}_360p.mp4")
     step_annotations = json.loads((base / "captain_cook_4d" / "gopro" / "resolution_360p" / "downloaded_video_annotations.json").read_text())
     error_annotations = json.loads((base / "downloader" / "metadata" / "error_annotations.json").read_text())
-    frames, recipe, has_errors, video_fps = prepare_data_for_task1(recording_id, video_path, step_annotations, error_annotations)
-    print(f"Frames: {len(frames)} | has_errors={has_errors} | fps={video_fps}")
+    frames, recipe, error_description, video_fps = prepare_data_for_task1(recording_id, video_path, step_annotations, error_annotations)
+    print(f"Frames: {len(frames)} | has_errors={bool(error_description)} | fps={video_fps}")
     print(recipe)

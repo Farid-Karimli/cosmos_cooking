@@ -6,7 +6,7 @@ uv run python -m error_recognition.main
 """
 
 from error_recognition.process import prepare_data_for_task1, prepare_data_for_task2
-from error_recognition.prompts import TASK1_PROMPT, TASK2_PROMPT
+from error_recognition.prompts import TASK1_PROMPT, TASK1_PROMPT2, TASK2_PROMPT
 import config
 
 from transformers import BatchFeature, Qwen3VLForConditionalGeneration, Qwen3VLProcessor, BatchFeature
@@ -183,12 +183,13 @@ def run_error_recognition_task1(n_videos: int | None = None) -> list[dict]:
         video_path = os.path.join(config.VIDEO_DIRECTORY, video_file)
         video_id = '_'.join(video_file.split("_")[:2])
             
-        frames, recipe_instructions, has_errors, video_fps = prepare_data_for_task1(
+        frames, recipe_instructions, error_description, video_fps = prepare_data_for_task1(
             recording_id=video_id,
             video_path=video_path,
             step_annotations=step_annotations,
             error_annotations=error_annotations,
         )
+        has_errors = bool(error_description)
 
         response = error_recognition_with_video(frames, recipe_instructions=recipe_instructions, video_fps=video_fps)
         result_json.append({
@@ -197,6 +198,7 @@ def run_error_recognition_task1(n_videos: int | None = None) -> list[dict]:
             'model_response': response,
             'recipe': recipe_instructions,
             'has_errors': has_errors,
+            'error_description': error_description,
         })
 
     return result_json
@@ -220,19 +222,21 @@ def run_error_recognition_task2(n_videos: int | None = None) -> list[dict]:
         video_path = os.path.join(config.VIDEO_DIRECTORY, video_file)
         video_id = '_'.join(video_file.split("_")[:2])
 
-        frames, has_errors, video_fps = prepare_data_for_task2(
+        frames, error_description, video_fps = prepare_data_for_task2(
             recording_id=video_id,
             video_path=video_path,
             step_annotations=step_annotations,
-            error_annotations=None,
+            error_annotations=error_annotations,
         )
+        has_errors = bool(error_description)
 
         response = error_recognition_with_video(frames, recipe_instructions=None, video_fps=video_fps)
         result_json.append({
             'video_id': video_id,
             'video_path': video_path,
             'model_response': response,
-            'has_errors': has_errors
+            'has_errors': has_errors,
+            'error_description': error_description,
         })
 
     return result_json

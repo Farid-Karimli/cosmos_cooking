@@ -2,13 +2,17 @@ import json
 import os
 from pathlib import Path
 import numpy as np
+import cv2
 import config
-from video_utils import trim_video, stream_video_chunks
+from video_utils import trim_video
 
 from episodic_memory.main import run_inference
 
 OBJECTS = ["knife", "bowl", "cutting board", "spatula", "spoon"]
 FPS = 30
+CHUNK_SECONDS = 5
+POST_DISAPPEAR_SECONDS = 30
+ABSENCE_CONFIRM_CHUNKS = 1
 
 def get_step_annotations(recording_id: str, step_annotations: list[dict]) -> dict:
     for obj in step_annotations:
@@ -16,41 +20,139 @@ def get_step_annotations(recording_id: str, step_annotations: list[dict]) -> dic
             return obj['steps']
     return None
 
-def get_associated_object(recording_id: str, str, step_annotations: list[dict], error_annotations: list[dict]) -> str:
+def _extract_candidate_objects(recording_id: str, step_annotations: list[dict]) -> list[str]:
     steps = get_step_annotations(recording_id, step_annotations)
-    associated_object = None
-    for i, step in enumerate(steps):
-        description = step['description']
-        if any(obj in description for obj in OBJECTS):
-            associated_object = np.random.choice([obj for obj in OBJECTS if obj in description])
-            break
-    if associated_object is None:   
+    if not steps:
+        return OBJECTS.copy()
+
+    scored_objects: list[tuple[int, str]] = []
+    for obj in OBJECTS:
+        earliest_idx = None
+        for i, step in enumerate(steps):
+            description = str(step.get("description", "")).lower()
+            if obj in description:
+                earliest_idx = i
+                break
+        if earliest_idx is not None:
+            scored_objects.append((earliest_idx, obj))
+
+    scored_objects.sort(key=lambda x: x[0])
+    prioritized = [obj for _, obj in scored_objects]
+    fallback = [obj for obj in OBJECTS if obj not in prioritized]
+    return prioritized + fallback
+
+def get_associated_object(recording_id: str, video_path: str, step_annotations: list[dict], error_annotations: list[dict]) -> str:
+    del video_path, error_annotations
+    candidates = _extract_candidate_objects(recording_id, step_annotations)
+    if not candidates:
         raise ValueError(f"No associated object found for recording {recording_id}")
-    return associated_object
+    return candidates[0]
 
-def localize_object_occurrence(recording_id: str, video_path: str, step_annotations: list[dict], error_annotations: list[dict]) -> tuple[list[np.ndarray], str]:
+def _get_video_metadata(video_path: str) -> tuple[float, int, float]:
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video {video_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or FPS
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    cap.release()
+    duration = total_frames / fps if fps > 0 else 0.0
+    return float(fps), total_frames, duration
+
+def _iter_video_chunks(video_path: str, chunk_size: int):
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video {video_path}")
+
+    start_frame = 0
+    while True:
+        frames = []
+        for _ in range(chunk_size):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+        if not frames:
+            break
+        yield start_frame, frames
+        start_frame += len(frames)
+    cap.release()
+
+def _chunk_contains_object(frames: list[np.ndarray], obj_name: str) -> bool:
+    prompt = (
+        f'Answer with ONLY "yes" or "no". '
+        f'Is there a visible {obj_name} at any point in this clip?'
+    )
+    output = run_inference(frames, prompt)
+    answer = output[0].strip().lower() if output else ""
+    return "yes" in answer
+
+def localize_object_occurrence(video_path: str, associated_object: str) -> tuple[float, float] | None:
     """
-    Localize the first occurrence of the associated object in the video.
-
-    Returns the start and end time of the occurrence.
-    If no occurrence is found, returns None.
-
-    Start time = time of first occurrence 
-    End time = start time + 30 seconds. 
+    Return (start_time, end_time) for the first present->absent occurrence.
+    end_time is set to 30s after disappearance (capped by video end).
     """
-    associated_object = get_associated_object(recording_id, video_path, step_annotations, error_annotations)
+    fps, _, duration = _get_video_metadata(video_path)
+    chunk_size = max(1, int(round(CHUNK_SECONDS * fps)))
 
+    chunk_starts: list[int] = []
+    chunk_presence: list[bool] = []
+    for start_frame, frames in _iter_video_chunks(video_path, chunk_size=chunk_size):
+        is_present = _chunk_contains_object(frames, associated_object)
+        chunk_starts.append(start_frame)
+        chunk_presence.append(is_present)
 
-    for i, chunk in enumerate(stream_video_chunks(video_path, chunk_size=300)): # 300 frames = 10 seconds
-        output_text = run_inference(chunk, f"Is there a {associated_object} in the video? If yes, return the frame number of the occurrence.")
-        if "yes" in output_text[0].lower():
-            start_time = i * 300 / FPS
-            end_time = start_time + 300 / FPS
-            return start_time, end_time
-    return None
+    if not chunk_presence:
+        return None
+
+    first_present_idx = next((i for i, present in enumerate(chunk_presence) if present), None)
+    if first_present_idx is None:
+        return None
+
+    disappear_idx = None
+    for i in range(first_present_idx + 1, len(chunk_presence)):
+        if chunk_presence[i]:
+            continue
+        lookahead_end = min(len(chunk_presence), i + ABSENCE_CONFIRM_CHUNKS + 1)
+        if all(not x for x in chunk_presence[i:lookahead_end]):
+            disappear_idx = i
+            break
+
+    if disappear_idx is None:
+        return None
+
+    start_time = chunk_starts[first_present_idx] / fps
+    disappearance_time = chunk_starts[disappear_idx] / fps
+    end_time = min(disappearance_time + POST_DISAPPEAR_SECONDS, duration)
+    if end_time <= start_time:
+        return None
+    return start_time, end_time
+
+def _trim_segment(video_path: str, start_time: float, end_time: float) -> list[np.ndarray]:
+    frames = trim_video(video_path, start_time=start_time, end_time=end_time, output_path=None)
+    if not isinstance(frames, list):
+        raise ValueError("Expected trim_video to return frames when output_path is None.")
+    return frames
 
 def prepare_data_for_episodic_memory(recording_id: str, video_path: str, step_annotations: list[dict], error_annotations: list[dict]) -> tuple[list[np.ndarray], str]:
-    pass
+    """
+    Returns:
+        frames: one segment where the chosen object appears then disappears, plus +30s.
+        associated_object: the object to ask about at segment end.
+    """
+    del error_annotations
+    candidates = _extract_candidate_objects(recording_id, step_annotations)
+    for associated_object in candidates:
+        localized = localize_object_occurrence(video_path=video_path, associated_object=associated_object)
+        if localized is None:
+            continue
+        start_time, end_time = localized
+        frames = _trim_segment(video_path, start_time, end_time)
+        return frames, associated_object
+
+    raise ValueError(
+        f"No valid object disappearance segment found for recording {recording_id}. "
+        "Tried objects: " + ", ".join(candidates)
+    )
 
 if __name__ == "__main__":
     recording_id = "29_22"
@@ -58,8 +160,11 @@ if __name__ == "__main__":
     video_path = str(base / "captain_cook_4d" / "gopro" / "resolution_360p" / f"{recording_id}_360p.mp4")
     step_annotations = json.loads((base / "captain_cook_4d" / "gopro" / "resolution_360p" / "downloaded_video_annotations.json").read_text())
 
-    associated_object = get_associated_object(recording_id, video_path, step_annotations, error_annotations=None)
+    frames, associated_object = prepare_data_for_episodic_memory(
+        recording_id=recording_id,
+        video_path=video_path,
+        step_annotations=step_annotations,
+        error_annotations=None,
+    )
     print(f"Associated object: {associated_object}")
-
-    start_time, end_time = localize_object_occurrence(recording_id, video_path, step_annotations, error_annotations=None)
-    print(f"Start time: {start_time}, End time: {end_time}")
+    print(f"Prepared frames: {len(frames)}")

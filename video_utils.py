@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from typing import Generator
 
 import cv2
 
@@ -7,6 +8,73 @@ import numpy as np
 
 import config
 
+import matplotlib.pyplot as plt
+
+def load_video(
+    video_path: str,
+    n_frames: int | None = None,
+) -> list[np.ndarray]:
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video {video_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    print(f"FPS: {fps}")
+
+    frames = []
+    while n_frames is None or len(frames) < n_frames:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frames.append(frame)
+    cap.release()
+
+    return frames
+
+def show_frames(frames: list[np.ndarray], indices: list[int], title_prefix: str = "segment"):
+    """
+    Example:
+    frames, obj = prepare_data_for_episodic_memory(...)
+    show_frames(frames, [0, len(frames)//2, len(frames)-1], title_prefix=obj)
+    """
+    plt.figure(figsize=(15, 4))
+    for i, idx in enumerate(indices, 1):
+        idx = max(0, min(idx, len(frames)-1))
+        img = cv2.cvtColor(frames[idx], cv2.COLOR_BGR2RGB)
+        ax = plt.subplot(1, len(indices), i)
+        ax.imshow(img)
+        ax.set_title(f"{title_prefix}\nframe {idx}")
+        ax.axis("off")
+    plt.tight_layout()
+    plt.show()
+
+
+
+def stream_video_chunks(
+    video_path: str,
+    chunk_size: int = 30,
+) -> Generator[np.ndarray, None, None]:
+    """
+    Stream every chunk_size frames from the video.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video {video_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+    while True:
+        frames = []
+        for i in range(chunk_size):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+        if len(frames) == chunk_size:
+            yield frames
+        else:
+            for frame in frames:
+                yield frame
+            break
+    cap.release()
 
 def trim_video(
     video_path: str,
@@ -102,14 +170,9 @@ def time_to_seconds(minutes: int | float = 0, seconds: float = 0) -> float:
     return float(minutes) * 60 + float(seconds)
 
 if __name__ == "__main__":
-    videopath = config.VIDEO_DIRECTORY + "/27_26_360p.mp4"
-    video_id = "27_26"
-    start_time = 0
-    end_time = 10
-
-    output_path = config.VIDEO_DIRECTORY + f"/{video_id}_360p_trimmed.mp4"
-
-    frames = trim_video(videopath, start_time, end_time, output_path)
-    print(f"Trimmed video saved to {output_path}")
+    video_path = config.VIDEO_DIRECTORY + "/29_22_360p.mp4"
+    
+    frames = load_video(video_path, n_frames=30)
+    print(F"Number of frames: {len(frames)}")
 
 

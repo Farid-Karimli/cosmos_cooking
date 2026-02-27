@@ -119,7 +119,7 @@ def error_recognition_with_video(video: list[np.ndarray], recipe_instructions: s
         Output text from the model.
     """
     if recipe_instructions is not None:
-        prompt = TASK1_PROMPT2.replace("[recipe steps]", recipe_instructions)
+        prompt = TASK1_PROMPT.replace("[paste recipe steps]", recipe_instructions)
     else:
         prompt = TASK2_PROMPT
 

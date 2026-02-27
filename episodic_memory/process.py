@@ -1,17 +1,17 @@
 import json
-import os
 from pathlib import Path
 import numpy as np
 import cv2
 from video_utils import trim_video
+from tqdm import tqdm
 
 from episodic_memory.main import run_inference
 
 OBJECTS = ["knife", "bowl", "cutting board", "spatula", "spoon"]
 FPS = 30
-CHUNK_SECONDS = 5
+CHUNK_SECONDS = 30
 POST_DISAPPEAR_SECONDS = 30
-ABSENCE_CONFIRM_CHUNKS = 1
+ABSENCE_CONFIRM_CHUNKS = 2
 
 def get_step_annotations(recording_id: str, step_annotations: list[dict]) -> dict:
     for obj in step_annotations:
@@ -78,6 +78,7 @@ def _iter_video_chunks(video_path: str, chunk_size: int):
 
 def _chunk_contains_object(frames: list[np.ndarray], obj_name: str) -> bool:
     prompt = (
+        'Look at this video: <|video_pad|>'
         f'Answer with ONLY "yes" or "no". '
         f'Is there a visible {obj_name} at any point in this clip?'
     )
@@ -92,10 +93,12 @@ def localize_object_occurrence(video_path: str, associated_object: str) -> tuple
     """
     fps, _, duration = _get_video_metadata(video_path)
     chunk_size = max(1, int(round(CHUNK_SECONDS * fps)))
+    n_chunks = duration / CHUNK_SECONDS
+
 
     chunk_starts: list[int] = []
     chunk_presence: list[bool] = []
-    for start_frame, frames in _iter_video_chunks(video_path, chunk_size=chunk_size):
+    for start_frame, frames in tqdm(_iter_video_chunks(video_path, chunk_size=chunk_size), desc="Localizing object occurrence", unit="chunks", total=n_chunks):
         is_present = _chunk_contains_object(frames, associated_object)
         chunk_starts.append(start_frame)
         chunk_presence.append(is_present)
@@ -121,7 +124,7 @@ def localize_object_occurrence(video_path: str, associated_object: str) -> tuple
 
     start_time = chunk_starts[first_present_idx] / fps
     disappearance_time = chunk_starts[disappear_idx] / fps
-    end_time = min(disappearance_time + POST_DISAPPEAR_SECONDS, duration)
+    end_time = min(disappearance_time + CHUNK_SECONDS + POST_DISAPPEAR_SECONDS, duration)
     if end_time <= start_time:
         return None
     return start_time, end_time
@@ -146,7 +149,7 @@ def prepare_data_for_episodic_memory(recording_id: str, video_path: str, step_an
             continue
         start_time, end_time = localized
         frames = _trim_segment(video_path, start_time, end_time)
-        return frames, associated_object
+        return frames, associated_object, start_time, end_time
 
     raise ValueError(
         f"No valid object disappearance segment found for recording {recording_id}. "
@@ -159,7 +162,7 @@ if __name__ == "__main__":
     video_path = str(base / "captain_cook_4d" / "gopro" / "resolution_360p" / f"{recording_id}_360p.mp4")
     step_annotations = json.loads((base / "captain_cook_4d" / "gopro" / "resolution_360p" / "downloaded_video_annotations.json").read_text())
 
-    frames, associated_object = prepare_data_for_episodic_memory(
+    frames, associated_object, start_time, end_time = prepare_data_for_episodic_memory(
         recording_id=recording_id,
         video_path=video_path,
         step_annotations=step_annotations,
@@ -167,3 +170,4 @@ if __name__ == "__main__":
     )
     print(f"Associated object: {associated_object}")
     print(f"Prepared frames: {len(frames)}")
+    print(f"Start time: {start_time:.2f}s, End time: {end_time:.2f}s")

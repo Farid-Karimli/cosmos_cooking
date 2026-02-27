@@ -5,16 +5,13 @@ Usage:
 uv run python -m episodic_memory.main
 """
 
-from error_recognition.main import truncate_at_first_answer
-from error_recognition.process import prepare_data_for_task1_prompted
-from error_recognition.prompts import ERROR_RECOGNITION_PROMPT
+from utils import truncate_at_first_answer
 import config
 
-from transformers import BatchFeature, Qwen3VLForConditionalGeneration, Qwen3VLProcessor, BatchFeature
+from transformers import BatchFeature, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 import torch
 import numpy as np
-import os
 import json
 
 model = Qwen3VLForConditionalGeneration.from_pretrained("nvidia/Cosmos-Reason2-2B", torch_dtype=torch.float16, device_map="auto", attn_implementation="sdpa")
@@ -34,7 +31,7 @@ def run_inference(video: str | list[np.ndarray], prompt: str) -> str:
         fps=4,
     )
     inputs = inputs.to(model.device)
-    generated_ids = model.generate(**inputs, max_new_tokens=4096)
+    generated_ids = model.generate(**inputs, max_new_tokens=1024)
     generated_ids_trimmed = [
         out_ids[len(in_ids) :]
         for in_ids, out_ids in zip(inputs.input_ids, generated_ids, strict=False)
@@ -48,40 +45,14 @@ def run_inference(video: str | list[np.ndarray], prompt: str) -> str:
     return output_text
 
 def episodic_memory_with_video(video: list[np.ndarray], recipe_instructions: str) -> str:
-    prompt = ERROR_RECOGNITION_PROMPT.replace("[paste recipe steps]", recipe_instructions)
-    output_text = run_inference(video, prompt)
-    return output_text
+    pass
     
 
 def run_episodic_memory() -> list[dict]:
     """
     Run episodic memory on videos in the config.VIDEO_DIRECTORY.
     """
-    with open(config.STEP_ANNOTATION_JSON) as f:
-        step_annotations = json.load(f)
-
-    result_json = []
-    for video_path in os.listdir(config.VIDEO_DIRECTORY):
-        if video_path.endswith(".mp4"):
-            video_id = '_'.join(video_path.split("_")[:2])
-            print(f"Video path: {video_path}, id: {video_id}")
-            
-            frames, recipe_instructions = prepare_data_for_task1_prompted(
-                recording_id=video_id, 
-                video_path=video_path,
-                step_annotations=step_annotations,
-                error_annotations=None
-            )
-
-            response = episodic_memory_with_video(frames, recipe_instructions)
-            result_json.append({
-                'video_id': video_id,
-                'video_path': video_path,
-                'model_response': response,
-                'recipe': recipe_instructions
-            })
-
-    return result_json
+    pass
 
 
 if __name__ == "__main__":

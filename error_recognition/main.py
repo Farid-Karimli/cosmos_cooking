@@ -7,9 +7,11 @@ uv run python -m error_recognition.main
 
 from error_recognition.process import prepare_data_for_task1, prepare_data_for_task2
 from error_recognition.prompts import TASK1_PROMPT, TASK2_PROMPT
+from utils import truncate_at_first_answer, _model_response_to_lines
+
 import config
 
-from transformers import BatchFeature, Qwen3VLForConditionalGeneration, Qwen3VLProcessor, BatchFeature
+from transformers import BatchFeature, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 import torch
 import numpy as np
@@ -31,24 +33,8 @@ def load_model_and_processor() -> tuple[Qwen3VLForConditionalGeneration, Qwen3VL
     return model, processor
 
 def process_inputs(video: str | list[np.ndarray], recipe_instructions: str) -> BatchFeature:
-    # TODO: Implement the video preparation here
+    # TODO: Implement the video preparation here   
     pass
-
-
-def truncate_at_first_answer(text: str, end_marker: str = "</answer>") -> str:
-    """Keep only up to and including the first complete answer block to avoid repetition loops."""
-    idx = text.find(end_marker)
-    if idx != -1:
-        return (text[: idx + len(end_marker)]).strip()
-    return text.strip()
-
-
-def _model_response_to_lines(response: list) -> list[str]:
-    """Convert model_response (list of one string) to list of lines for readable JSON."""
-    if not response or not isinstance(response[0], str):
-        return response
-    return response[0].split("\n")
-
 
 def results_for_json(results: list[dict]) -> list[dict]:
     """Convert results so model_response is stored as lines for readable JSON (no long lines).

@@ -6,7 +6,7 @@ uv run python -m error_recognition.main
 """
 
 from error_recognition.process import prepare_data_for_task1, prepare_data_for_task2
-from error_recognition.prompts import TASK1_PROMPT, TASK1_PROMPT2, TASK2_PROMPT
+from error_recognition.prompts import TASK1_PROMPT, TASK2_PROMPT
 import config
 
 from transformers import BatchFeature, Qwen3VLForConditionalGeneration, Qwen3VLProcessor, BatchFeature

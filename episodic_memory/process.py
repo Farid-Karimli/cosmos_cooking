@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 import numpy as np
 import cv2
-import config
 from video_utils import trim_video
 
 from episodic_memory.main import run_inference

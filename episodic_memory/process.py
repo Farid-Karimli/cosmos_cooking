@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 import numpy as np
 import cv2
 from video_utils import trim_video
@@ -86,9 +87,29 @@ def _chunk_contains_object(frames: list[np.ndarray], obj_name: str, model, proce
     answer = output[0].strip().lower() if output else ""
     return "yes" in answer
 
-def localize_object_occurrence(video_path: str, associated_object: str, model, processor) -> tuple[float, float] | None:
+def _describe_last_known_location(frames: list[np.ndarray], obj_name: str) -> str | None:
+    if not frames:
+        return None
+    prompt = (
+        f'Answer with ONLY a short location phrase (max 8 words). '
+        f'Where is the {obj_name} last seen in this clip? '
+        f'Examples: "on the cutting board", "inside the bowl", "next to the stove". '
+        f'If unclear, answer "unknown".'
+    )
+    output = run_inference(frames, prompt)
+    if not output:
+        return None
+    raw = output[0].strip()
+    cleaned = re.sub(r'["\'.]+', "", raw).strip().lower()
+    if not cleaned or cleaned == "unknown":
+        return None
+    words = cleaned.split()
+    return " ".join(words[:8])
+
+def localize_object_occurrence(video_path: str, associated_object: str) -> tuple[float, float, float, float] | None:
     """
-    Return (start_time, end_time) for the first present->absent occurrence.
+    Return (start_time, end_time, last_present_start_time, last_present_end_time)
+    for the first present->absent occurrence.
     end_time is set to 30s after disappearance (capped by video end).
     """
     fps, _, duration = _get_video_metadata(video_path)
@@ -127,7 +148,13 @@ def localize_object_occurrence(video_path: str, associated_object: str, model, p
     end_time = min(disappearance_time + CHUNK_SECONDS + POST_DISAPPEAR_SECONDS, duration)
     if end_time <= start_time:
         return None
-    return start_time, end_time
+    last_present_idx = max(first_present_idx, disappear_idx - 1)
+    last_present_start_time = chunk_starts[last_present_idx] / fps
+    last_present_end_time = min(
+        (chunk_starts[last_present_idx] + chunk_size) / fps,
+        duration,
+    )
+    return start_time, end_time, last_present_start_time, last_present_end_time
 
 def _trim_segment(video_path: str, start_time: float, end_time: float) -> list[np.ndarray]:
     frames = trim_video(video_path, start_time=start_time, end_time=end_time, output_path=None)
@@ -135,7 +162,13 @@ def _trim_segment(video_path: str, start_time: float, end_time: float) -> list[n
         raise ValueError("Expected trim_video to return frames when output_path is None.")
     return frames
 
-def prepare_data_for_episodic_memory(recording_id: str, video_path: str, step_annotations: list[dict], error_annotations: list[dict], model, processor) -> tuple[list[np.ndarray], str]:
+def prepare_data_for_episodic_memory(
+    recording_id: str,
+    video_path: str,
+    step_annotations: list[dict],
+    error_annotations: list[dict], model, processor,
+    include_last_known_location: bool = False,
+) -> tuple[list[np.ndarray], str] | tuple[list[np.ndarray], str, str | None]:
     """
     Returns:
         frames: one segment where the chosen object appears then disappears, plus +30s.
@@ -147,9 +180,18 @@ def prepare_data_for_episodic_memory(recording_id: str, video_path: str, step_an
         localized = localize_object_occurrence(video_path=video_path, associated_object=associated_object, model=model, processor=processor)
         if localized is None:
             continue
-        start_time, end_time = localized
+        start_time, end_time, last_present_start_time, last_present_end_time = localized
         frames = _trim_segment(video_path, start_time, end_time)
-        return frames, associated_object, start_time, end_time
+        if not include_last_known_location:
+            return frames, associated_object, start_time, end_time
+
+        last_present_frames = _trim_segment(
+            video_path,
+            start_time=last_present_start_time,
+            end_time=last_present_end_time,
+        )
+        last_known_location = _describe_last_known_location(last_present_frames, associated_object)
+        return frames, associated_object, last_known_location
 
     raise ValueError(
         f"No valid object disappearance segment found for recording {recording_id}. "
@@ -162,12 +204,14 @@ if __name__ == "__main__":
     video_path = str(base / "captain_cook_4d" / "gopro" / "resolution_360p" / f"{recording_id}_360p.mp4")
     step_annotations = json.loads((base / "captain_cook_4d" / "gopro" / "resolution_360p" / "downloaded_video_annotations.json").read_text())
 
-    frames, associated_object, start_time, end_time = prepare_data_for_episodic_memory(
+    frames, associated_object, last_known_location, start_time, end_time = prepare_data_for_episodic_memory(
         recording_id=recording_id,
         video_path=video_path,
         step_annotations=step_annotations,
         error_annotations=None,
+        include_last_known_location=True,
     )
     print(f"Associated object: {associated_object}")
+    print(f"Last known location: {last_known_location}")
     print(f"Prepared frames: {len(frames)}")
     print(f"Start time: {start_time:.2f}s, End time: {end_time:.2f}s")

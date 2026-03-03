@@ -5,8 +5,8 @@ import numpy as np
 import cv2
 from video_utils import trim_video
 from tqdm import tqdm
-
-from .inference import run_inference
+from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
+from .inference import load_model_and_processor, run_inference
 
 OBJECTS = ["knife", "bowl", "cutting board", "spatula", "spoon"]
 FPS = 30
@@ -83,11 +83,11 @@ def _chunk_contains_object(frames: list[np.ndarray], obj_name: str, model, proce
         f'Answer with ONLY "yes" or "no". '
         f'Is there a visible {obj_name} at any point in this clip?'
     )
-    output = run_inference(frames, prompt, model, processor)
+    output = run_inference(frames, prompt, model, processor, n_tokens=500)
     answer = output[0].strip().lower() if output else ""
     return "yes" in answer
 
-def _describe_last_known_location(frames: list[np.ndarray], obj_name: str) -> str | None:
+def _describe_last_known_location(frames: list[np.ndarray], obj_name: str, model, processor) -> str | None:
     if not frames:
         return None
     prompt = (
@@ -96,7 +96,7 @@ def _describe_last_known_location(frames: list[np.ndarray], obj_name: str) -> st
         f'Examples: "on the cutting board", "inside the bowl", "next to the stove". '
         f'If unclear, answer "unknown".'
     )
-    output = run_inference(frames, prompt)
+    output = run_inference(frames, prompt, model, processor, n_tokens=500)
     if not output:
         return None
     raw = output[0].strip()
@@ -106,7 +106,7 @@ def _describe_last_known_location(frames: list[np.ndarray], obj_name: str) -> st
     words = cleaned.split()
     return " ".join(words[:8])
 
-def localize_object_occurrence(video_path: str, associated_object: str) -> tuple[float, float, float, float] | None:
+def localize_object_occurrence(video_path: str, associated_object: str, model, processor) -> tuple[float, float, float, float] | None:
     """
     Return (start_time, end_time, last_present_start_time, last_present_end_time)
     for the first present->absent occurrence.
@@ -166,9 +166,11 @@ def prepare_data_for_episodic_memory(
     recording_id: str,
     video_path: str,
     step_annotations: list[dict],
-    error_annotations: list[dict], model, processor,
+    error_annotations: list[dict], 
+    model: Qwen3VLForConditionalGeneration, 
+    processor: Qwen3VLProcessor,
     include_last_known_location: bool = False,
-) -> tuple[list[np.ndarray], str] | tuple[list[np.ndarray], str, str | None]:
+) -> tuple[list[np.ndarray], str, float, float] | tuple[list[np.ndarray], str, str | None, float, float]:
     """
     Returns:
         frames: one segment where the chosen object appears then disappears, plus +30s.
@@ -182,6 +184,7 @@ def prepare_data_for_episodic_memory(
             continue
         start_time, end_time, last_present_start_time, last_present_end_time = localized
         frames = _trim_segment(video_path, start_time, end_time)
+        
         if not include_last_known_location:
             return frames, associated_object, start_time, end_time
 
@@ -190,8 +193,8 @@ def prepare_data_for_episodic_memory(
             start_time=last_present_start_time,
             end_time=last_present_end_time,
         )
-        last_known_location = _describe_last_known_location(last_present_frames, associated_object)
-        return frames, associated_object, last_known_location
+        last_known_location = _describe_last_known_location(last_present_frames, associated_object, model, processor)
+        return frames, associated_object, last_known_location, start_time, end_time
 
     raise ValueError(
         f"No valid object disappearance segment found for recording {recording_id}. "
@@ -199,6 +202,7 @@ def prepare_data_for_episodic_memory(
     )
 
 if __name__ == "__main__":
+    model, processor = load_model_and_processor()
     recording_id = "29_22"
     base = Path(__file__).resolve().parent.parent
     video_path = str(base / "captain_cook_4d" / "gopro" / "resolution_360p" / f"{recording_id}_360p.mp4")

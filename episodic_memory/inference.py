@@ -19,7 +19,7 @@ def process_inputs(video: str | list[np.ndarray], recipe_instructions: str) -> B
     # TODO: Implement
     pass
 
-def run_inference(video: str | list[np.ndarray], prompt: str, model, processor) -> str:
+def run_inference(video: str | list[np.ndarray], prompt: str, model: str, processor: str, n_tokens: int = 1024) -> str:
     inputs = processor(
         videos = [video], 
         text = prompt, tokenize=True,
@@ -29,7 +29,7 @@ def run_inference(video: str | list[np.ndarray], prompt: str, model, processor) 
         fps=4,
     )
     inputs = inputs.to(model.device)
-    generated_ids = model.generate(**inputs, max_new_tokens=1024)
+    generated_ids = model.generate(**inputs, max_new_tokens=n_tokens)
     generated_ids_trimmed = [
         out_ids[len(in_ids) :]
         for in_ids, out_ids in zip(inputs.input_ids, generated_ids, strict=False)

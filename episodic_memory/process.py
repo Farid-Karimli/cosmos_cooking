@@ -5,7 +5,7 @@ import cv2
 from video_utils import trim_video
 from tqdm import tqdm
 
-from episodic_memory.main import run_inference
+from .inference import run_inference
 
 OBJECTS = ["knife", "bowl", "cutting board", "spatula", "spoon"]
 FPS = 30
@@ -76,17 +76,17 @@ def _iter_video_chunks(video_path: str, chunk_size: int):
         start_frame += len(frames)
     cap.release()
 
-def _chunk_contains_object(frames: list[np.ndarray], obj_name: str) -> bool:
+def _chunk_contains_object(frames: list[np.ndarray], obj_name: str, model, processor) -> bool:
     prompt = (
         'Look at this video: <|video_pad|>'
         f'Answer with ONLY "yes" or "no". '
         f'Is there a visible {obj_name} at any point in this clip?'
     )
-    output = run_inference(frames, prompt)
+    output = run_inference(frames, prompt, model, processor)
     answer = output[0].strip().lower() if output else ""
     return "yes" in answer
 
-def localize_object_occurrence(video_path: str, associated_object: str) -> tuple[float, float] | None:
+def localize_object_occurrence(video_path: str, associated_object: str, model, processor) -> tuple[float, float] | None:
     """
     Return (start_time, end_time) for the first present->absent occurrence.
     end_time is set to 30s after disappearance (capped by video end).
@@ -98,8 +98,8 @@ def localize_object_occurrence(video_path: str, associated_object: str) -> tuple
 
     chunk_starts: list[int] = []
     chunk_presence: list[bool] = []
-    for start_frame, frames in tqdm(_iter_video_chunks(video_path, chunk_size=chunk_size), desc="Localizing object occurrence", unit="chunks", total=n_chunks):
-        is_present = _chunk_contains_object(frames, associated_object)
+    for start_frame, frames in _iter_video_chunks(video_path, chunk_size=chunk_size):
+        is_present = _chunk_contains_object(frames, associated_object, model, processor)
         chunk_starts.append(start_frame)
         chunk_presence.append(is_present)
 
@@ -135,7 +135,7 @@ def _trim_segment(video_path: str, start_time: float, end_time: float) -> list[n
         raise ValueError("Expected trim_video to return frames when output_path is None.")
     return frames
 
-def prepare_data_for_episodic_memory(recording_id: str, video_path: str, step_annotations: list[dict], error_annotations: list[dict]) -> tuple[list[np.ndarray], str]:
+def prepare_data_for_episodic_memory(recording_id: str, video_path: str, step_annotations: list[dict], error_annotations: list[dict], model, processor) -> tuple[list[np.ndarray], str]:
     """
     Returns:
         frames: one segment where the chosen object appears then disappears, plus +30s.
@@ -144,7 +144,7 @@ def prepare_data_for_episodic_memory(recording_id: str, video_path: str, step_an
     del error_annotations
     candidates = _extract_candidate_objects(recording_id, step_annotations)
     for associated_object in candidates:
-        localized = localize_object_occurrence(video_path=video_path, associated_object=associated_object)
+        localized = localize_object_occurrence(video_path=video_path, associated_object=associated_object, model=model, processor=processor)
         if localized is None:
             continue
         start_time, end_time = localized

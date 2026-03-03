@@ -40,7 +40,7 @@ def run_episodic_memory() -> list[dict]:
         video_path = os.path.join(video_directory, video_file)
         recording_id = os.path.splitext(video_file)[0].replace("_360p", "")
 
-        frames, associated_object, start_time, end_time = prepare_data_for_episodic_memory(
+        frames, associated_object, last_known_location, start_time, end_time = prepare_data_for_episodic_memory(
             recording_id=recording_id,
             video_path=video_path,
             step_annotations=step_annotations,
@@ -60,6 +60,7 @@ def run_episodic_memory() -> list[dict]:
             "start_time": start_time,
             "end_time": end_time,
             "answer": answer,
+            "last_known_location": last_known_location,
         })
 
     return results
